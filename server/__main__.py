@@ -4,6 +4,7 @@
 短链接使用自己域名 + nginx 302 重定向
 """
 import os
+import time
 import httpx
 from typing import Optional
 
@@ -21,6 +22,7 @@ from .jd_api import (
 from .database import PriceDatabase
 from .short_links import ShortLinkDatabase
 from .cache import cache
+from .metrics import metrics
 
 mcp = FastMCP("jd-saver")
 
@@ -32,6 +34,9 @@ async def jd_get_coupon(link: str, user_id: str = "anonymous") -> dict:
 
     注意：佣金率、佣金金额等敏感信息在服务端过滤，不返回给前端
     """
+    start_time = time.time()
+    metrics.increment("coupon_query_total")
+
     parsed = parse_jd_url(link)
     if not parsed["sku_id"]:
         return {"success": False, "error": "无法从链接中提取 SKU ID"}
@@ -39,13 +44,16 @@ async def jd_get_coupon(link: str, user_id: str = "anonymous") -> dict:
     sku_id = parsed["sku_id"]
     cached = cache.get("coupon", sku_id)
     if cached:
+        metrics.increment("coupon_cache_hit")
         return {"success": True, "sku_id": sku_id, "data": cached, "source": "cache"}
 
+    metrics.increment("coupon_cache_miss")
     config = JDConfig.from_env()
     async with httpx.AsyncClient(timeout=20) as client:
         try:
             material = await query_goods_material(client, config, sku_id)
         except Exception as e:
+            metrics.increment("coupon_error")
             return {"success": False, "error": f"API 调用失败: {e}"}
 
     # 只返回用户需要的信息，佣金敏感字段已过滤
@@ -72,6 +80,7 @@ async def jd_get_coupon(link: str, user_id: str = "anonymous") -> dict:
     }
 
     cache.set("coupon", sku_id, result)
+    metrics.observe("coupon_latency", time.time() - start_time)
     return result
 
 
