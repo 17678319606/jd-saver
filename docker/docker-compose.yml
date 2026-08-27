@@ -14,6 +14,8 @@ services:
       - JD_TOP_URL=https://api.jd.com/routerjson
       - MCP_PORT=8765
       - DB_PATH=/data/jd_saver.db
+      - POKE_API_KEY=your_poke_api_key_here
+      - POKE_WEBHOOK_TOKEN=your_poke_webhook_token_here
       - PYTHONUNBUFFERED=1
     volumes:
       - jd-data:/data

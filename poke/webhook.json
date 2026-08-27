@@ -1,0 +1,5 @@
+{
+  "triggerId": "52261b28-f932-48d0-b4b2-341e9aba96da",
+  "webhookUrl": "https://poke.com/api/v1/inbound/webhook",
+  "webhookToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyZDUwYTc0YS05YWU1LTQ2NDEtYjhlNC03OTJkZjIzNjk1ODciLCJqdGkiOiI3NzQ0ZTcyMS03MGFkLTQ3MzEtOTdkMS0xOTI5YWM3N2M3YjYiLCJpYXQiOjE3ODc4NDU4ODgsImV4cCI6MjEwMzIwNTg4OH0.sRidr2tuBesh0X6El92qKUxmQev8yQy4Z1sUaVc9YkQ"
+}

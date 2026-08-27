@@ -9,6 +9,7 @@ import time
 from .jd_config import JDConfig
 from .jd_api import query_goods_material
 from .database import PriceDatabase
+from .poke_notify import PokeNotifier
 
 
 async def poll_and_notify():
@@ -16,6 +17,7 @@ async def poll_and_notify():
     db = PriceDatabase(os.environ.get("DB_PATH", "./jd_saver.db"))
     await db.connect()
     config = JDConfig.from_env()
+    notifier = PokeNotifier()
 
     while True:
         try:
@@ -30,6 +32,7 @@ async def poll_and_notify():
                     try:
                         material = await query_goods_material(client, config, sku_id)
                         current_price = float(material.get("jdPrice", 0))
+                        product_title = material.get("title", "")
                         await db.update_alert_price(sku_id, current_price)
 
                         # 检查是否触发
@@ -37,7 +40,19 @@ async def poll_and_notify():
                         for user_id, alert_sku, cp, tp in triggers:
                             if alert_sku == sku_id:
                                 print(f"[ALERT] user={user_id} sku={sku_id} price={cp} target={tp}")
-                                # TODO: 接入 Poke 消息推送
+
+                                # 生成推广链接并发送 Poke 通知
+                                promo_link = f"https://jinli.dajiayouxuan.com/go/{sku_id}"
+                                notify_result = await notifier.send_price_drop_alert(
+                                    user_id=user_id,
+                                    product_title=product_title,
+                                    original_price=cp,
+                                    current_price=current_price,
+                                    promo_link=promo_link,
+                                    sku_id=sku_id,
+                                )
+                                print(f"[NOTIFY] poke result: {notify_result}")
+
                                 await db.mark_notified(user_id, sku_id)
                     except Exception as e:
                         print(f"[ERROR] poll sku={sku_id}: {e}")
