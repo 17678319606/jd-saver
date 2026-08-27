@@ -1,0 +1,20 @@
+{
+  "name": "jd-saver",
+  "version": "0.1.0",
+  "description": "京东省钱助手 - 优惠券查询、转链、降价提醒",
+  "tools": [
+    "jd_get_coupon",
+    "jd_generate_promo_link",
+    "jd_find_deals",
+    "jd_set_price_alert",
+    "jd_query_history",
+    "jd_update_min_price",
+    "jd_get_combo_scheme"
+  ],
+  "env": {
+    "JD_APP_KEY": { "type": "secret", "required": true },
+    "JD_APP_SECRET": { "type": "secret", "required": true },
+    "JD_PID": { "type": "string", "required": true },
+    "DB_PATH": { "type": "string", "default": "./jd_saver.db" }
+  }
+}
