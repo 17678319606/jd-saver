@@ -7,7 +7,7 @@
 - 🔍 查隐藏优惠券
 - 🔗 CPS 转链赚佣金（短链接保护隐私）
 - 💰 综合省钱方案（券+凑单）
-- 🔔 降价提醒 + Poke 通知
+- 🔔 降价提醒（用户可在自己的 Poke 中设置）
 - 📈 历史价格追踪
 
 ## 快速开始（本地开发）
@@ -20,8 +20,6 @@ pip install -r requirements.txt
 export JD_APP_KEY=your_key
 export JD_APP_SECRET=your_secret
 export JD_PID=123456_1000
-export POKE_API_KEY=your_poke_api_key
-export POKE_WEBHOOK_TOKEN=your_webhook_token
 
 # 启动
 python -m server
@@ -75,6 +73,23 @@ npx poke@latest tunnel http://localhost:8765/mcp --name "jd-saver" --recipe
 | `jd_update_min_price` | 更新最低价 |
 | `jd_get_combo_scheme` | 凑单优惠方案 |
 
+## 使用方式
+
+用户可以通过 Poke 对话使用这些工具：
+
+```
+用户: 帮我查一下这个京东商品的优惠券
+      https://item.jd.com/12345678.html
+
+用户: 设置降价提醒，目标价 199 元
+      https://item.jd.com/12345678.html
+
+用户: 这个商品的历史价格是多少？
+      sku_id: 12345678
+```
+
+用户在自己的 Poke 中可以设置定时任务，定期检查价格变化。
+
 ## 环境变量
 
 | 变量 | 必需 | 说明 |
@@ -82,8 +97,6 @@ npx poke@latest tunnel http://localhost:8765/mcp --name "jd-saver" --recipe
 | `JD_APP_KEY` | ✅ | 京东联盟 App Key |
 | `JD_APP_SECRET` | ✅ | 京东联盟 App Secret |
 | `JD_PID` | ✅ | 推广位 PID（如 123456_1000） |
-| `POKE_API_KEY` | ❌ | Poke API 密钥（用于消息推送） |
-| `POKE_WEBHOOK_TOKEN` | ❌ | Poke Webhook Token（降价提醒通知） |
 | `DB_PATH` | ❌ | SQLite 路径，默认 `./jd_saver.db` |
 | `CACHE_TTL` | ❌ | 缓存过期时间（秒），默认 300 |
 | `POLL_INTERVAL` | ❌ | 价格轮询间隔（秒），默认 300 |
@@ -96,7 +109,6 @@ npx poke@latest tunnel http://localhost:8765/mcp --name "jd-saver" --recipe
                                                → jd-saver Docker 容器 (:8765)
                                                → 京东联盟 API
                                                → SQLite 数据库
-                                               → Poke Webhook (降价提醒)
 ```
 
 ## 隐私保护
