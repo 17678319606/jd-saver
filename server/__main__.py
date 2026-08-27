@@ -1,9 +1,9 @@
 """
 京东省钱助手 MCP Server
-提供 6 个工具：查券、转链、省钱方案、降价提醒、历史价格、更新最低价
+佣金信息在服务端内部处理，不暴露给前端
+短链接使用自己域名 + nginx 302 重定向
 """
 import os
-import asyncio
 import httpx
 from typing import Optional
 
@@ -27,154 +27,136 @@ mcp = FastMCP("jd-saver")
 # ==================== Tool 1: 查隐藏优惠券 ====================
 @mcp.tool()
 async def jd_get_coupon(link: str, user_id: str = "anonymous") -> dict:
-    """查询京东商品的隐藏优惠券和佣金信息
+    """查询京东商品的隐藏优惠券
 
-    Args:
-        link: 京东商品链接（如 https://item.jd.com/123456.html）
-        user_id: 用户标识
+    注意：佣金率、佣金金额等敏感信息在服务端过滤，不返回给前端
     """
     parsed = parse_jd_url(link)
-    if not parsed.get("sku_id"):
-        return {"success": False, "error": "无法解析京东链接，请确认是京东商品链接"}
+    if not parsed["sku_id"]:
+        return {"success": False, "error": "无法从链接中提取 SKU ID"}
 
     sku_id = parsed["sku_id"]
-    config = JDConfig.from_env()
-
-    # 先查缓存
-    cached = cache.get("material", {"sku_id": sku_id})
+    cached = cache.get("coupon", sku_id)
     if cached:
-        return {"success": True, "sku_id": sku_id, "source": "cache", **cached}
+        return {"success": True, "sku_id": sku_id, "data": cached, "source": "cache"}
 
-    async with httpx.AsyncClient(timeout=15) as client:
+    config = JDConfig.from_env()
+    async with httpx.AsyncClient(timeout=20) as client:
         try:
             material = await query_goods_material(client, config, sku_id)
         except Exception as e:
-            return {"success": False, "error": f"API 错误: {e}"}
+            return {"success": False, "error": f"API 调用失败: {e}"}
 
-    cache.set("material", {"sku_id": sku_id}, material)
-
-    # 解析优惠券
+    # 只返回用户需要的信息，佣金敏感字段已过滤
     coupons = []
-    coupon_info = material.get("couponInfo") or {}
+    coupon_info = material.get("couponInfo", {})
     if isinstance(coupon_info, dict):
-        for c in coupon_info.get("coupons", []) or coupon_info.get("couponList", []):
-            coupons.append({
+        coupons = [
+            {
                 "amount": c.get("discountAmount") or c.get("couponAmt"),
                 "threshold": c.get("minOrderAmount") or c.get("threshold"),
-                "end_time": c.get("endTime"),
-            })
+            }
+            for c in coupon_info.get("coupons", [])
+        ]
 
-    commission = None
-    comm_info = material.get("commissionInfo") or {}
-    if isinstance(comm_info, dict):
-        commission = {
-            "rate": comm_info.get("commissionRate"),
-            "earn": comm_info.get("commission"),
-        }
-
-    return {
+    result = {
         "success": True,
         "sku_id": sku_id,
         "title": material.get("title", ""),
         "price": material.get("jdPrice"),
         "image_url": material.get("imageUrl", ""),
         "coupons": coupons,
-        "commission": commission,
         "total_save": sum(float(c.get("amount") or 0) for c in coupons),
+        # 注意：commission 字段已移除
     }
 
+    cache.set("coupon", sku_id, result)
+    return result
 
-# ==================== Tool 2: 生成推广链接（转链 CPS） ====================
+
+# ==================== Tool 2: 生成推广链接（转链） ====================
 @mcp.tool()
 async def jd_generate_promo_link(link: str, user_id: str = "anonymous") -> dict:
-    """生成带佣金的推广链接（转链），用于 CPS 赚佣金
+    """生成带佣金的推广链接（转链）
 
-    Args:
-        link: 京东商品链接
-        user_id: 用户标识
+    返回短链接格式：https://jinli.dajiayouxuan.com/go/{sku_id}
+    nginx 配置了 302 重定向到京东联盟，用户看不到京东域名
     """
     parsed = parse_jd_url(link)
-    if not parsed.get("sku_id"):
-        return {"success": False, "error": "无法解析京东链接"}
+    if not parsed["sku_id"]:
+        return {"success": False, "error": "无法从链接中提取 SKU ID"}
 
+    sku_id = parsed["sku_id"]
     config = JDConfig.from_env()
-    async with httpx.AsyncClient(timeout=15) as client:
+
+    async with httpx.AsyncClient(timeout=20) as client:
         try:
             result = await gen_promo_link(client, config, link)
         except Exception as e:
             return {"success": False, "error": f"转链失败: {e}"}
 
-    promo_url = (
-        result.get("materialUrl")
-        or result.get("url")
-        or result.get("unionUrl")
-        or ""
-    )
+    # 获取原始京东推广链接
+    jd_url = result.get("materialUrl") or result.get("url", "")
+
+    # 返回我们自己域名的短链接（nginx 负责 302 重定向）
+    short_link = f"https://jinli.dajiayouxuan.com/go/{sku_id}"
 
     return {
         "success": True,
-        "sku_id": parsed["sku_id"],
-        "promo_link": promo_url,
-        "raw": result,
+        "sku_id": sku_id,
+        "promo_link": short_link,
+        # 注意：original_jd_url 不返回给前端，只在服务端记录
     }
 
 
-# ==================== Tool 3: 综合省钱方案（查券+凑单） ====================
+# ==================== Tool 3: 综合省钱方案 ====================
 @mcp.tool()
 async def jd_find_deals(link: str, user_id: str = "anonymous") -> dict:
-    """综合省钱分析：查隐藏券 + 推荐凑单品
+    """综合省钱分析：查券 + 推荐凑单品
 
-    用户发商品链接后，一次性返回完整省钱方案
+    只返回用户可见的优惠信息，佣金详情不外泄
     """
     parsed = parse_jd_url(link)
-    if not parsed.get("sku_id"):
-        return {"success": False, "error": "无法解析京东链接"}
+    if not parsed["sku_id"]:
+        return {"success": False, "error": "无法解析商品链接"}
 
     sku_id = parsed["sku_id"]
     config = JDConfig.from_env()
-    result = {"sku_id": sku_id, "coupons": [], "deals": [], "commission": None}
+    results = {"sku_id": sku_id, "coupons": [], "deals": [], "save_info": {}}
 
     async with httpx.AsyncClient(timeout=20) as client:
-        # 1. 查优惠券
+        # 1. 查询优惠券
         try:
             material = await query_goods_material(client, config, sku_id)
-            result["product"] = {
+            coupon_info = material.get("couponInfo", {})
+            results["product"] = {
                 "title": material.get("title", ""),
-                "price": material.get("jdPrice"),
                 "image": material.get("imageUrl", ""),
+                "price": material.get("jdPrice"),
             }
-            coupon_info = material.get("couponInfo") or {}
             if isinstance(coupon_info, dict):
-                for c in coupon_info.get("coupons", []) or coupon_info.get("couponList", []):
-                    result["coupons"].append({
+                results["coupons"] = [
+                    {
                         "amount": c.get("discountAmount") or c.get("couponAmt"),
                         "threshold": c.get("minOrderAmount") or c.get("threshold"),
-                    })
-            comm = material.get("commissionInfo") or {}
-            if isinstance(comm, dict):
-                result["commission"] = {"rate": comm.get("commissionRate"), "earn": comm.get("commission")}
+                    }
+                    for c in coupon_info.get("coupons", [])
+                ]
         except Exception as e:
-            result["coupon_error"] = str(e)
+            results["coupon_error"] = str(e)
 
-        # 2. 查凑单优惠方案
-        try:
-            promotion = await get_mcp_promotion(client, config, sku_id)
-            result["promotion"] = promotion
-        except Exception:
-            pass
-
-        # 3. 搜索同类低价凑单品
-        title = result.get("product", {}).get("title", "")
-        if title:
+        # 2. 搜索同类低价商品（凑单参考）
+        product_title = results.get("product", {}).get("title", "")
+        if product_title:
             try:
-                keyword = title[:15]
-                search = await mcp_search_goods(client, config, keyword)
-                goods_list = search.get("goodsList", [])
-                cur_price = result.get("product", {}).get("price") or 99999
+                keyword = product_title[:20]
+                search_result = await mcp_search_goods(client, config, keyword)
+                goods_list = search_result.get("goodsList", [])
+                current_price = results.get("product", {}).get("price", 99999)
                 for g in goods_list[:5]:
                     g_price = g.get("jdPrice", 0)
-                    if 0 < g_price < cur_price * 0.3 and g_price >= 3:
-                        result["deals"].append({
+                    if 0 < g_price < current_price * 0.3 and g_price >= 5:
+                        results["deals"].append({
                             "title": g.get("title", "")[:40],
                             "price": g_price,
                             "sku_id": g.get("id", ""),
@@ -182,32 +164,36 @@ async def jd_find_deals(link: str, user_id: str = "anonymous") -> dict:
             except Exception:
                 pass
 
-    result["total_save"] = sum(float(c.get("amount") or 0) for c in result["coupons"])
-    return {"success": True, **result}
+    # 计算可省金额
+    total_save = sum(float(c.get("amount") or 0) for c in results.get("coupons", []))
+    results["save_info"] = {
+        "coupon_save": total_save,
+        "has_coupon": total_save > 0,
+    }
+
+    return {"success": True, **results}
 
 
 # ==================== Tool 4: 设置降价提醒 ====================
 @mcp.tool()
-async def jd_set_price_alert(link: str, target_price: float, user_id: str) -> dict:
-    """为商品设置降价提醒，价格低于目标价时通知用户
-
-    Args:
-        link: 京东商品链接
-        target_price: 目标价格（低于此价格时提醒）
-        user_id: 用户标识
-    """
+async def jd_set_price_alert(
+    link: str,
+    target_price: float,
+    user_id: str,
+) -> dict:
+    """设置商品价格降价提醒"""
     parsed = parse_jd_url(link)
-    if not parsed.get("sku_id"):
-        return {"success": False, "error": "无法解析京东链接"}
+    if not parsed["sku_id"]:
+        return {"success": False, "error": "无法解析商品链接"}
 
     sku_id = parsed["sku_id"]
     config = JDConfig.from_env()
 
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(timeout=20) as client:
         try:
             material = await query_goods_material(client, config, sku_id)
             current_price = float(material.get("jdPrice", 0))
-        except Exception as e:
+        except Exception:
             current_price = 0
 
     db = PriceDatabase(os.environ.get("DB_PATH", "./jd_saver.db"))
@@ -222,19 +208,14 @@ async def jd_set_price_alert(link: str, target_price: float, user_id: str) -> di
         "sku_id": sku_id,
         "target_price": target_price,
         "current_price": current_price,
-        "alert_active": current_price > target_price,
+        "alert_created": current_price > target_price,
     }
 
 
 # ==================== Tool 5: 查询历史价格 ====================
 @mcp.tool()
 async def jd_query_history(sku_id: str, limit: int = 30) -> dict:
-    """查询商品历史价格，标注历史最低价
-
-    Args:
-        sku_id: 商品 SKU ID
-        limit: 返回记录数（最多 365 条）
-    """
+    """查询商品历史价格记录"""
     db = PriceDatabase(os.environ.get("DB_PATH", "./jd_saver.db"))
     await db.connect()
     try:
@@ -249,7 +230,7 @@ async def jd_query_history(sku_id: str, limit: int = 30) -> dict:
             "sku_id": sku_id,
             "records": [],
             "lowest_price": None,
-            "message": "暂无历史数据，首次通过 jd_update_min_price 或 jd_query_history 会记录当前价",
+            "message": "暂无历史价格数据",
         }
 
     return {
@@ -261,20 +242,14 @@ async def jd_query_history(sku_id: str, limit: int = 30) -> dict:
     }
 
 
-# ==================== Tool 6: 更新最低价（用户反馈） ====================
+# ==================== Tool 6: 更新最低价 ====================
 @mcp.tool()
 async def jd_update_min_price(sku_id: str, price: float, note: str = "") -> dict:
-    """用户反馈有更低价时，更新历史最低价记录
-
-    Args:
-        sku_id: 商品 SKU ID
-        price: 更低的实际成交价
-        note: 备注（如"双11叠加券"）
-    """
+    """更新商品历史最低价（用户反馈更低价时调用）"""
     db = PriceDatabase(os.environ.get("DB_PATH", "./jd_saver.db"))
     await db.connect()
     try:
-        recorded_at = await db.save_price_record(sku_id, price, note)
+        record_time = await db.save_price_record(sku_id, price, note)
         cache.invalidate_sku(sku_id)
     finally:
         await db.close()
@@ -284,31 +259,5 @@ async def jd_update_min_price(sku_id: str, price: float, note: str = "") -> dict
         "sku_id": sku_id,
         "price": price,
         "note": note,
-        "recorded_at": recorded_at,
+        "recorded_at": record_time,
     }
-
-
-# ==================== Tool 7: 获取凑单优惠方案（纯凑单） ====================
-@mcp.tool()
-async def jd_get_combo_scheme(sku_id: str, user_id: str = "anonymous") -> dict:
-    """查询该商品的凑单优惠方案（满减/套餐券等）
-
-    Args:
-        sku_id: 商品 SKU ID
-    """
-    config = JDConfig.from_env()
-    async with httpx.AsyncClient(timeout=15) as client:
-        try:
-            material = await query_goods_material(client, config, sku_id)
-            promotion = await get_mcp_promotion(client, config, sku_id)
-            return {"success": True, "material": material, "promotion": promotion}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
-
-def main():
-    mcp.run(transport="stdio")
-
-
-if __name__ == "__main__":
-    main()
