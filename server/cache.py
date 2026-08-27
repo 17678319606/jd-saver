@@ -14,11 +14,15 @@ class Cache:
         self.default_ttl = default_ttl
         self._store: Dict[str, tuple] = {}  # key -> (value, expires_at)
 
-    def _key(self, method: str, params: dict) -> str:
-        raw = f"{method}:{hashlib.md5(str(sorted(params.items())).encode()).hexdigest()}"
-        return raw[:20]
+    def _key(self, method: str, params) -> str:
+        # params 可以是 str（直接用）或 dict（哈希）
+        if isinstance(params, str):
+            raw = f"{method}:{params}"
+        else:
+            raw = f"{method}:{hashlib.md5(str(sorted(params.items())).encode()).hexdigest()}"
+        return hashlib.sha256(raw.encode()).hexdigest()[:20]
 
-    def get(self, method: str, params: dict) -> Optional[Any]:
+    def get(self, method: str, params) -> Optional[Any]:
         k = self._key(method, params)
         entry = self._store.get(k)
         if entry and entry[1] > time.time():
@@ -26,7 +30,7 @@ class Cache:
         self._store.pop(k, None)
         return None
 
-    def set(self, method: str, params: dict, value: Any, ttl: int = 300) -> None:
+    def set(self, method: str, params, value: Any, ttl: int = 300) -> None:
         k = self._key(method, params)
         self._store[k] = (value, time.time() + ttl)
 

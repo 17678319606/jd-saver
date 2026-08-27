@@ -1,0 +1,4 @@
+# pytest-asyncio 配置
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
