@@ -19,6 +19,7 @@ from .jd_api import (
     query_goods_snapshot,
 )
 from .database import PriceDatabase
+from .short_links import ShortLinkDatabase
 from .cache import cache
 
 mcp = FastMCP("jd-saver")
@@ -100,6 +101,14 @@ async def jd_generate_promo_link(link: str, user_id: str = "anonymous") -> dict:
 
     # 返回我们自己域名的短链接（nginx 负责 302 重定向）
     short_link = f"https://jinli.dajiayouxuan.com/go/{sku_id}"
+
+    # 保存到短链接数据库
+    db = ShortLinkDatabase(os.environ.get("DB_PATH", "./jd_saver.db"))
+    await db.connect()
+    try:
+        await db.save_short_link(sku_id, short_link, jd_url)
+    finally:
+        await db.close()
 
     return {
         "success": True,
