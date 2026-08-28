@@ -3,10 +3,8 @@
 触发后通过 Poke webhook 推送通知（如配置了 POKE_WEBHOOK_URL）
 """
 import asyncio
-import json
 import os
 import httpx
-import time
 
 from .jd_config import JDConfig
 from .jd_api import query_goods_material
@@ -75,7 +73,7 @@ async def poll_and_notify():
                                 # 构建通知消息
                                 notify_msg = (
                                     f"🔔 降价提醒\n"
-                                    f"商品：{product_title[:30]}...\n"
+                                    f"商品：{product_title[:30]}\n"
                                     f"目标价：¥{tp} → 当前价：¥{cp}\n"
                                     f"已降价：¥{price_drop:.2f}（{percent:.1f}%）\n"
                                     f"快去下单吧！"
@@ -83,15 +81,12 @@ async def poll_and_notify():
 
                                 # 通过 Poke 推送
                                 if POKE_WEBHOOK_URL:
-                                    ok = await _send_poke_notification(
-                                        POKE_WEBHOOK_URL,
-                                        notify_msg.replace(f"user={user_id}", "")
-                                    )
-                                    if ok:
-                                        print(f"[NOTIFY] 已推送给 user={user_id}")
-                                    else:
-                                        print(f"[NOTIFY] 推送失败，保留通知")
+                                    ok = await _send_poke_notification(POKE_WEBHOOK_URL, notify_msg)
+                                    if not ok:
+                                        print(f"[NOTIFY] 推送失败，保留通知供重试")
                                         notified_cache.discard(cache_key)  # 失败则允许重试
+                                    else:
+                                        print(f"[NOTIFY] 已推送给 user={user_id}")
 
                                 await db.mark_notified(user_id, sku_id)
 

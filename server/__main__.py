@@ -14,12 +14,10 @@ from .jd_config import JDConfig, parse_jd_url
 from .jd_api import (
     gen_promo_link,
     query_goods_material,
-    query_coupon_info,
     search_goods,
     query_goods_recommend,
     query_goods_combination,
     query_goods_comment_summary,
-    query_goods_snapshot,
 )
 from .database import PriceDatabase
 from .short_links import ShortLinkDatabase
@@ -342,14 +340,15 @@ async def jd_search_goods(
     # 构建 shop_types 参数
     shop_types = "1" if self_run_only else None
 
-    # 构建排序
+    # 构建排序：京东 API sort=1 升序, sort=2 降序
     sort_name = None
+    sort_order = 1
     if sort_by == "price_asc":
-        sort_name, sort_val = "price", 1
+        sort_name, sort_order = "price", 1
     elif sort_by == "price_desc":
-        sort_name, sort_val = "price", 2
+        sort_name, sort_order = "price", 2
     elif sort_by == "sales":
-        sort_name, sort_val = "salesCount", 2  # 销量降序
+        sort_name, sort_order = "salesCount", 2  # 销量降序
 
     async with httpx.AsyncClient(timeout=20) as client:
         try:
@@ -358,6 +357,7 @@ async def jd_search_goods(
                 page_index=page,
                 shop_types=shop_types,
                 sort_name=sort_name,
+                sort_order=sort_order,
                 price_from=min_price,
                 price_to=max_price,
             )

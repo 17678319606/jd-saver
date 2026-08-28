@@ -188,6 +188,7 @@ async def search_goods(
     page_size: int = 10,
     shop_types: Optional[str] = None,
     sort_name: Optional[str] = None,
+    sort_order: int = 1,
     price_from: Optional[float] = None,
     price_to: Optional[float] = None,
 ) -> dict:
@@ -195,7 +196,8 @@ async def search_goods(
     通用商品搜索（支持自营筛选、价格区间、排序）
 
     shop_types: "1"=自营, "2"=商家店铺（可传 "1,2" 多选）
-    sort_name: "price"=价格升序, "sales"=销量, "commission"=佣金率
+    sort_name: 排序字段 "price"/"salesCount"/"commission"
+    sort_order: 1=升序, 2=降序
     """
     params: dict = {
         "@type": "com.jd.union.open.gateway.api.dto.mcp.GoodsReq",
@@ -209,7 +211,7 @@ async def search_goods(
         params["shopTypes"] = shop_types
     if sort_name:
         params["sortName"] = sort_name
-        params["sort"] = 1  # 升序
+        params["sort"] = sort_order
     if price_from is not None:
         params["priceFrom"] = price_from
     if price_to is not None:
