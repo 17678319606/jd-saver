@@ -58,6 +58,18 @@ class PriceDatabase:
                 ON price_alerts(user_id, notified);
             CREATE INDEX IF NOT EXISTS idx_alerts_sku
                 ON price_alerts(sku_id, notified);
+
+            CREATE TABLE IF NOT EXISTS notify_logs (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     TEXT    NOT NULL,
+                sku_id      TEXT    NOT NULL,
+                message     TEXT    NOT NULL,
+                sent        INTEGER DEFAULT 0,
+                created_at  INTEGER NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_notify_user_time
+                ON notify_logs(user_id, created_at DESC);
         """)
         await self._conn.commit()
 
@@ -141,6 +153,17 @@ class PriceDatabase:
             (int(time.time()), user_id, sku_id),
         )
         await self._conn.commit()
+
+    # ---- 通知日志 ----
+
+    async def save_notify_log(self, user_id: str, sku_id: str, message: str) -> int:
+        now = int(time.time())
+        await self._conn.execute(
+            "INSERT INTO notify_logs (user_id, sku_id, message, sent, created_at) VALUES (?, ?, ?, 0, ?)",
+            (user_id, sku_id, message, now),
+        )
+        await self._conn.commit()
+        return now
 
     # ---- 清理 ----
 

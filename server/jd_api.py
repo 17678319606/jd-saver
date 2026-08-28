@@ -176,3 +176,92 @@ async def query_goods_snapshot(
             "pid": config.pid,
         }
     })
+
+
+# ==================== 新增 API ====================
+
+async def search_goods(
+    client: httpx.AsyncClient,
+    config: JDConfig,
+    keyword: str,
+    page_index: int = 1,
+    page_size: int = 10,
+    shop_types: Optional[str] = None,
+    sort_name: Optional[str] = None,
+    price_from: Optional[float] = None,
+    price_to: Optional[float] = None,
+) -> dict:
+    """
+    通用商品搜索（支持自营筛选、价格区间、排序）
+
+    shop_types: "1"=自营, "2"=商家店铺（可传 "1,2" 多选）
+    sort_name: "price"=价格升序, "sales"=销量, "commission"=佣金率
+    """
+    params: dict = {
+        "@type": "com.jd.union.open.gateway.api.dto.mcp.GoodsReq",
+        "keyword": keyword,
+        "pageIndex": page_index,
+        "pageSize": page_size,
+        "pid": config.pid,
+        "fields": "id,title,imageUrl,jdPrice,couponInfo,salesCount,shopType,commentCount",
+    }
+    if shop_types:
+        params["shopTypes"] = shop_types
+    if sort_name:
+        params["sortName"] = sort_name
+        params["sort"] = 1  # 升序
+    if price_from is not None:
+        params["priceFrom"] = price_from
+    if price_to is not None:
+        params["priceTo"] = price_to
+    return await _call_api(client, config, "jd.union.open.mcp.goods.query", {"goodsReq": params})
+
+
+async def query_goods_recommend(
+    client: httpx.AsyncClient,
+    config: JDConfig,
+    sku_id: str,
+) -> dict:
+    """根据商品 SKU 推荐相关商品（凑单/搭配推荐）"""
+    return await _call_api(client, config, "jd.union.open.goods.recommend.query", {
+        "recommendGoodsReq": {
+            "@type": "com.jd.union.open.gateway.api.dto.goods.recommend.RecommendGoodsReq",
+            "skuId": sku_id,
+            "sceneId": 1,
+        }
+    })
+
+
+async def query_goods_combination(
+    client: httpx.AsyncClient,
+    config: JDConfig,
+    sku_id: str,
+) -> dict:
+    """
+    组合优惠查询（真正的凑单方案）
+    返回可以一起购买享受额外优惠的商品列表
+    """
+    return await _call_api(client, config, "jd.union.open.goods.combination.query", {
+        "goodsReq": {
+            "@type": "com.jd.union.open.gateway.api.dto.goods.combination.CombinationGoodsReq",
+            "skuId": sku_id,
+            "pid": config.pid,
+            "needClickUrl": True,
+            "pageIndex": 1,
+            "pageSize": 10,
+        }
+    })
+
+
+async def query_goods_comment_summary(
+    client: httpx.AsyncClient,
+    config: JDConfig,
+    sku_id: str,
+) -> dict:
+    """
+    查询商品评论摘要（好评率、差评关键词）
+    用于过滤差评率高的商品
+    """
+    return await _call_api(client, config, "biz.product.commentSummarys.query", {
+        "sku": sku_id,
+    })

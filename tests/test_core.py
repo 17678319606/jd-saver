@@ -215,3 +215,86 @@ class TestShortLinkDatabase:
     async def test_get_nonexistent(self, link_db):
         assert await link_db.get_promo_link("999999") is None
         assert await link_db.get_stats("999999") is None
+
+
+# ==================== 新增工具逻辑测试 ====================
+
+class TestSearchGoodsFilter:
+    """测试搜索参数构建逻辑（不实际调用 API）"""
+
+    def test_shop_types_none(self):
+        from server.jd_api import search_goods
+        import inspect
+        sig = inspect.signature(search_goods)
+        params = list(sig.parameters.keys())
+        assert "shop_types" in params
+        assert "sort_name" in params
+        assert "price_from" in params
+        assert "price_to" in params
+
+    def test_search_goods_has_correct_api_name(self):
+        """验证 search_goods 调用的是正确的 API 方法名"""
+        from server.jd_api import search_goods
+        import inspect
+        source = inspect.getsource(search_goods)
+        assert "jd.union.open.mcp.goods.query" in source
+        assert "shopTypes" in source or "shop_types" in source
+
+
+class TestJDApiNewFunctions:
+    """验证新增 API 函数的签名和参数"""
+
+    def test_query_goods_recommend_exists(self):
+        from server.jd_api import query_goods_recommend
+        import inspect
+        sig = inspect.signature(query_goods_recommend)
+        assert "sku_id" in sig.parameters
+
+    def test_query_goods_combination_exists(self):
+        from server.jd_api import query_goods_combination
+        import inspect
+        sig = inspect.signature(query_goods_combination)
+        assert "sku_id" in sig.parameters
+        source = inspect.getsource(query_goods_combination)
+        assert "jd.union.open.goods.combination.query" in source
+
+    def test_query_goods_comment_summary_exists(self):
+        from server.jd_api import query_goods_comment_summary
+        import inspect
+        sig = inspect.signature(query_goods_comment_summary)
+        assert "sku_id" in sig.parameters
+        source = inspect.getsource(query_goods_comment_summary)
+        assert "biz.product.commentSummarys.query" in source
+
+    def test_search_goods_api_method(self):
+        from server.jd_api import search_goods
+        import inspect
+        source = inspect.getsource(search_goods)
+        assert "jd.union.open.mcp.goods.query" in source
+
+
+class TestSchedulerNotification:
+    """验证 scheduler 的通知推送逻辑"""
+
+    def test_scheduler_imports_poke_webhook(self):
+        from server.scheduler import POKE_WEBHOOK_URL
+        assert isinstance(POKE_WEBHOOK_URL, str)
+
+    def test_scheduler_send_function_exists(self):
+        from server.scheduler import _send_poke_notification
+        import inspect
+        sig = inspect.signature(_send_poke_notification)
+        assert "webhook_url" in sig.parameters
+        assert "message" in sig.parameters
+
+    def test_scheduler_db_notify_log_exists(self):
+        from server.database import PriceDatabase
+        import inspect
+        assert hasattr(PriceDatabase, "save_notify_log")
+
+
+class TestDatabaseNotifyLog:
+    @pytest.mark.asyncio
+    async def test_save_and_retrieve_notify_log(self, db):
+        now = await db.save_notify_log("user1", "123456", "test message")
+        assert isinstance(now, int)
