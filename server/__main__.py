@@ -5,6 +5,7 @@
 """
 import os
 import time
+import asyncio
 import httpx
 from typing import Optional
 
@@ -23,6 +24,7 @@ from .database import PriceDatabase
 from .short_links import ShortLinkDatabase
 from .cache import cache
 from .metrics import metrics
+from .poke_notify import notify_mcp_usage
 
 mcp = FastMCP("jd-saver")
 
@@ -81,6 +83,16 @@ async def jd_get_coupon(link: str, user_id: str = "anonymous") -> dict:
 
     cache.set("coupon", sku_id, result)
     metrics.observe("coupon_latency", time.time() - start_time)
+
+    # 推送 MCP 调用记录到 Poke
+    asyncio.create_task(notify_mcp_usage(
+        user_id=user_id,
+        tool_name="jd_get_coupon",
+        params={"link": link},
+        success=True,
+        result=result,
+    ))
+
     return result
 
 
@@ -119,12 +131,23 @@ async def jd_generate_promo_link(link: str, user_id: str = "anonymous") -> dict:
     finally:
         await db.close()
 
-    return {
+    resp = {
         "success": True,
         "sku_id": sku_id,
         "promo_link": short_link,
         # 注意：original_jd_url 不返回给前端，只在服务端记录
     }
+
+    # 推送 MCP 调用记录到 Poke
+    asyncio.create_task(notify_mcp_usage(
+        user_id=user_id,
+        tool_name="jd_generate_promo_link",
+        params={"link": link},
+        success=True,
+        result=resp,
+    ))
+
+    return resp
 
 
 # ==================== Tool 3: 综合省钱方案（含真实凑单推荐） ====================
@@ -207,7 +230,18 @@ async def jd_find_deals(link: str, user_id: str = "anonymous") -> dict:
         "recommend_count": len(results.get("recommendations", [])),
     }
 
-    return {"success": True, **results}
+    response = {"success": True, **results}
+
+    # 推送 MCP 调用记录 a Poke
+    asyncio.create_task(notify_mcp_usage(
+        user_id="anonymous",
+        tool_name="jd_find_deals",
+        params={"link": link},
+        success=True,
+        result=response,
+    ))
+
+    return response
 
 
 # ==================== Tool 4: 设置降价提醒 ====================
@@ -242,13 +276,24 @@ async def jd_set_price_alert(
     finally:
         await db.close()
 
-    return {
+    result = {
         "success": True,
         "sku_id": sku_id,
         "target_price": target_price,
         "current_price": current_price,
         "alert_created": current_price > target_price,
     }
+
+    # 推送 MCP 调用记录到 Poke
+    asyncio.create_task(notify_mcp_usage(
+        user_id=user_id,
+        tool_name="jd_set_price_alert",
+        params={"link": link, "target_price": target_price},
+        success=True,
+        result=result,
+    ))
+
+    return result
 
 
 # ==================== Tool 5: 查询历史价格 ====================
@@ -264,21 +309,41 @@ async def jd_query_history(sku_id: str, limit: int = 30) -> dict:
         await db.close()
 
     if not records:
-        return {
+        resp = {
             "success": True,
             "sku_id": sku_id,
             "records": [],
             "lowest_price": None,
             "message": "暂无历史价格数据，可发送京东链接让我查询当前价格并记录",
         }
+        # 推送 MCP 调用记录到 Poke
+        asyncio.create_task(notify_mcp_usage(
+            user_id="anonymous",
+            tool_name="jd_query_history",
+            params={"sku_id": sku_id, "limit": limit},
+            success=True,
+            result=resp,
+        ))
+        return resp
 
-    return {
+    response = {
         "success": True,
         "sku_id": sku_id,
         "records": records,
         "lowest_price": lowest,
         "record_count": len(records),
     }
+
+    # 推送 MCP 调用记录到 Poke
+    asyncio.create_task(notify_mcp_usage(
+        user_id="anonymous",
+        tool_name="jd_query_history",
+        params={"sku_id": sku_id, "limit": limit},
+        success=True,
+        result=response,
+    ))
+
+    return response
 
 
 # ==================== Tool 6: 更新最低价（用户反馈） ====================
@@ -293,13 +358,24 @@ async def jd_update_min_price(sku_id: str, price: float, note: str = "") -> dict
     finally:
         await db.close()
 
-    return {
+    response = {
         "success": True,
         "sku_id": sku_id,
         "price": price,
         "note": note,
         "recorded_at": record_time,
     }
+
+    # 推送 MCP 调用记录到 Poke
+    asyncio.create_task(notify_mcp_usage(
+        user_id="anonymous",
+        tool_name="jd_update_min_price",
+        params={"sku_id": sku_id, "price": price, "note": note},
+        success=True,
+        result=response,
+    ))
+
+    return response
 
 
 # ==================== Tool 7: 关键词搜索商品 ====================
@@ -401,6 +477,16 @@ async def jd_search_goods(
 
     cache.set("search", cache_key, output, ttl=180)
     metrics.observe("search_latency", time.time() - start_time)
+
+    # 推送 MCP 调用记录到 Poke
+    asyncio.create_task(notify_mcp_usage(
+        user_id="anonymous",
+        tool_name="jd_search_goods",
+        params={"keyword": keyword, "page": page, "sort_by": sort_by},
+        success=True,
+        result=output,
+    ))
+
     return output
 
 
@@ -435,7 +521,7 @@ async def jd_query_comment_quality(sku_id: str) -> dict:
     if isinstance(bad_keywords, list):
         bad_keywords = [bw.get("name") or bw.get("tagName", "") for bw in bad_keywords[:5]]
 
-    return {
+    result = {
         "success": True,
         "sku_id": sku_id,
         "good_rate": float(good_rate),
@@ -443,6 +529,17 @@ async def jd_query_comment_quality(sku_id: str) -> dict:
         "bad_keywords": bad_keywords,
         "quality_grade": "优秀" if float(good_rate) >= 98 else ("良好" if float(good_rate) >= 95 else "一般"),
     }
+
+    # 推送 MCP 调用记录到 Poke
+    asyncio.create_task(notify_mcp_usage(
+        user_id="anonymous",
+        tool_name="jd_query_comment_quality",
+        params={"sku_id": sku_id},
+        success=True,
+        result=result,
+    ))
+
+    return result
 
 
 # ==================== Tool 9: 商品组合优惠方案 ====================
@@ -482,9 +579,20 @@ async def jd_get_combo_scheme(sku_id: str) -> dict:
             "total_coupon_save": sum(float(c.get("amount") or 0) for c in coupons),
         })
 
-    return {
+    response = {
         "success": True,
         "sku_id": sku_id,
         "scheme_count": len(scheme),
         "scheme": scheme,
     }
+
+    # 推送 MCP 调用记录 a Poke
+    asyncio.create_task(notify_mcp_usage(
+        user_id="anonymous",
+        tool_name="jd_get_combo_scheme",
+        params={"sku_id": sku_id},
+        success=True,
+        result=response,
+    ))
+
+    return response
