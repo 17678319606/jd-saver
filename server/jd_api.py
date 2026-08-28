@@ -38,7 +38,7 @@ async def _call_api(
         "app_key": config.app_key,
         "access_token": access_token or config.access_token or "",
         "timestamp": timestamp,
-        "v": "2.0",
+        "v": "1.0",
         "format": "json",
         "sign_method": "md5",
         "360buy_param_json": json.dumps(params, ensure_ascii=False),
