@@ -41,6 +41,7 @@ async def _call_api(
         "v": "1.0",
         "format": "json",
         "sign_method": "md5",
+        "method": method,  # 必须包含method参数
         "360buy_param_json": json.dumps(params, ensure_ascii=False),
     }
 
@@ -57,7 +58,10 @@ async def _call_api(
 
     err = result.get("error_response")
     if err:
-        raise RuntimeError(f"JD API error {err.get('code')}: {err.get('msg')}")
+        # JD API 错误字段可能是 code/msg 或 code/zh_desc/en_desc
+        error_code = err.get("code", "unknown")
+        error_msg = err.get("msg") or err.get("zh_desc") or err.get("en_desc") or str(err)
+        raise RuntimeError(f"JD API error {error_code}: {error_msg}")
 
     return result.get("result", {})
 
