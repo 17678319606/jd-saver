@@ -12,16 +12,12 @@ from .jd_config import JDConfig
 
 
 def _generate_sign(params: dict, app_secret: str) -> str:
-    """生成京东联盟 API 签名"""
-    sorted_params = dict(sorted(params.items()))
-    s = app_secret
-    for k, v in sorted_params.items():
-        if k == "360buy_param_json":
-            s += k + v
-        else:
-            s += k + str(v)
-    s += app_secret
-    return hashlib.md5(s.encode("utf-8")).hexdigest().upper()
+    """生成京东联盟 API 签名（对齐官方 SDK 实现）"""
+    # 按 SDK 要求排序参数并拼接
+    keys = sorted(params.keys())
+    str_parameters = app_secret + "".join(f"{k}{params[k]}" for k in keys) + app_secret
+    # 使用 latin1 编码（与 SDK 一致）
+    return hashlib.md5(str_parameters.encode("latin1")).hexdigest().upper()
 
 
 async def _call_api(
@@ -32,7 +28,11 @@ async def _call_api(
     access_token: Optional[str] = None,
 ) -> dict:
     """通用京东联盟 API 调用"""
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+    # 时间戳格式必须包含毫秒和时区（与 SDK 一致）
+    # 强制使用北京时间（+0800）以避免容器时区问题
+    import os
+    os.environ.setdefault('TZ', 'Asia/Shanghai')
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S.000+0800", time.localtime())
 
     sys_params = {
         "app_key": config.app_key,
@@ -46,9 +46,10 @@ async def _call_api(
 
     sys_params["sign"] = _generate_sign(sys_params, config.app_secret)
 
+    # 使用 form data 发送（与 SDK 一致）
     resp = await client.post(
         config.top_url,
-        params=sys_params,
+        data=sys_params,
         timeout=15.0,
     )
     resp.raise_for_status()

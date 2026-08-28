@@ -5,13 +5,11 @@ services:
       dockerfile: docker/Dockerfile
     container_name: jd-saver
     restart: unless-stopped
+    env_file:
+      - ../.env
     ports:
       - "8765:8765"
     environment:
-      - JD_APP_KEY=${JD_APP_KEY}
-      - JD_APP_SECRET=${JD_APP_SECRET}
-      - JD_PID=${JD_PID}
-      - JD_TOP_URL=${JD_TOP_URL:-https://api.jd.com/routerjson}
       - MCP_PORT=8765
       - DB_PATH=/data/jd_saver.db
       - PYTHONUNBUFFERED=1
