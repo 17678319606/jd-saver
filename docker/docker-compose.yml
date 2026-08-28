@@ -8,16 +8,16 @@ services:
     ports:
       - "8765:8765"
     environment:
-      - JD_APP_KEY=d51d12fb9411f97ca19a724530729950
-      - JD_APP_SECRET=d939d5b59ca547ba934bb9d7656eb527
-      - JD_PID=1000138638_4100368453_3003539490
-      - JD_TOP_URL=https://api.jd.com/routerjson
+      - JD_APP_KEY=${JD_APP_KEY}
+      - JD_APP_SECRET=${JD_APP_SECRET}
+      - JD_PID=${JD_PID}
+      - JD_TOP_URL=${JD_TOP_URL:-https://api.jd.com/routerjson}
       - MCP_PORT=8765
       - DB_PATH=/data/jd_saver.db
       - PYTHONUNBUFFERED=1
     volumes:
       - jd-data:/data
-      - ./cron_backup.sh:/usr/local/bin/cron_backup.sh:ro
+      - ../cron_backup.sh:/usr/local/bin/cron_backup.sh:ro
     command: python server_sse.py
     logging:
       driver: json-file
