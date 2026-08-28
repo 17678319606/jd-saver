@@ -72,7 +72,6 @@ npx poke@latest tunnel http://localhost:8765/mcp --name "jd-saver" --recipe
 | `jd_set_price_alert` | 设置降价提醒 |
 | `jd_query_history` | 查询历史价格 |
 | `jd_update_min_price` | 更新最低价 |
-| `jd_get_combo_scheme` | 凑单优惠方案 |
 
 ## 发布后验证
 
