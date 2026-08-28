@@ -8,8 +8,7 @@
     "jd_find_deals",
     "jd_set_price_alert",
     "jd_query_history",
-    "jd_update_min_price",
-    "jd_get_combo_scheme"
+    "jd_update_min_price"
   ],
   "env": {
     "JD_APP_KEY": { "type": "secret", "required": true },
