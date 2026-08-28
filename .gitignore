@@ -6,3 +6,6 @@ __pycache__/
 .docker/
 node_modules/
 poke/webhook.json
+
+# SDK 原始压缩包（保留 README 和源码，不提交 zip）
+docs/*.zip
